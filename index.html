@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>📡 IoT Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f9;
+      text-align: center;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #2c3e50;
+    }
+
+    .status {
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .connected {
+      color: green;
+    }
+
+    .disconnected {
+      color: red;
+    }
+
+    .card-container {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      flex-wrap: wrap;
+      margin-bottom: 30px;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      min-width: 150px;
+    }
+
+    .value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #34495e;
+    }
+
+    canvas {
+      max-width: 800px;
+      background: white;
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🌡️ Realtime IoT Dashboard</h1>
+  <div id="status" class="status disconnected">❌ Belum terhubung ke MQTT</div>
+
+  <div class="card-container">
+    <div class="card">
+      <div>Suhu</div>
+      <div class="value" id="suhu">-- °C</div>
+    </div>
+    <div class="card">
+      <div>Kelembaban</div>
+      <div class="value" id="kelembaban">-- %</div>
+    </div>
+  </div>
+
+  <canvas id="chart" width="800" height="400"></canvas>
+
+  <script>
+   const broker = 'wss://broker.hivemq.com:8884/mqtt';
+    const topic = 'wokwi/iotdata';
+    const client = mqtt.connect(broker);
+
+    const statusEl = document.getElementById('status');
+    const suhuEl = document.getElementById('suhu');
+    const kelembabanEl = document.getElementById('kelembaban');
+
+    // Chart.js setup
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Suhu (°C)',
+            data: [],
+            borderColor: '#e74c3c',
+            fill: false,
+            tension: 0.3
+          },
+          {
+            label: 'Kelembaban (%)',
+            data: [],
+            borderColor: '#3498db',
+            fill: false,
+            tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Waktu' }},
+          y: { beginAtZero: true }
+        }
+      }
+    });
+
+    function updateChart(suhu, kelembaban) {
+      const time = new Date().toLocaleTimeString();
+      if (chart.data.labels.length > 20) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+        chart.data.datasets[1].data.shift();
+      }
+      chart.data.labels.push(time);
+      chart.data.datasets[0].data.push(suhu);
+      chart.data.datasets[1].data.push(kelembaban);
+      chart.update();
+
+      suhuEl.textContent = suhu.toFixed(1) + ' °C';
+      kelembabanEl.textContent = kelembaban.toFixed(1) + ' %';
+    }
+
+    client.on('connect', () => {
+      console.log('✅ Terhubung ke broker MQTT');
+      statusEl.textContent = '✅ Terhubung ke MQTT';
+      statusEl.className = 'status connected';
+      client.subscribe(topic);
+    });
+
+    client.on('error', (err) => {
+      console.error('❌ Gagal koneksi:', err);
+      statusEl.textContent = '❌ Gagal konek ke MQTT';
+      statusEl.className = 'status disconnected';
+    });
+
+    client.on('message', (topic, message) => {
+      console.log('📩 Pesan masuk:', message.toString());
+      try {
+        const data = JSON.parse(message.toString());
+        if (data.suhu !== undefined && data.kelembaban !== undefined) {
+          updateChart(data.suhu, data.kelembaban);
+        }
+      } catch (e) {
+        console.error('❌ Format data salah:', e);
+      }
+    });
+
+    client.on('close', () => {
+      console.log('❌ Koneksi MQTT putus');
+      statusEl.textContent = '❌ Terputus dari MQTT';
+      statusEl.className = 'status disconnected';
+    });
+  </script>
+
+</body>
+</html>
